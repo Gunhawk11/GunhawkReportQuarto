@@ -1,0 +1,587 @@
+---
+title: "HIV Testing Rates Analysis"
+author: "Vishal Jain"
+format: 
+  html:
+    output-file: index.html
+    page-layout: full
+    code-fold: true
+    code-copy: true
+    toc: true
+    toc-location: left
+    smooth-scroll: true
+    embed-resources: true
+    css: custom.css
+title-block-style: default
+title-block-banner: true
+project:
+  type: website
+  output-dir: docs
+execute:
+  echo: true
+  warning: false
+  message: false
+---
+
+# Introduction
+
+
+HIV testing during antenatal care (ANC) is a cornerstone of preventing mother-to-child transmission and ensuring early treatment. This dashboard analyzes the percentage of pregnant women attending ANC who were tested for HIV or already knew their status—a critical metric for evaluating global healthcare progress. Comparing trends from 2015 to 2023, we highlight countries with significant improvements or declines, regional patterns, and overall testing rate trajectories. The visualizations reveal disparities in healthcare access, the impact of public health interventions, and areas needing urgent attention. By tracking these metrics, policymakers and health advocates can identify gaps and allocate resources effectively to protect maternal and child health.
+
+```{python}
+import polars as pl
+import plotly.express as px
+import numpy as np
+
+df = pl.read_csv("unicef_indicator.csv")
+
+df_2023 = df.with_columns(
+    pl.col("obs_value")
+    .str.replace("<1", "0.5")
+    .str.replace(">95", "95")
+    .cast(pl.Float64),
+    pl.col("time_period").cast(pl.Int32)
+)
+
+
+
+
+dff_2023 = df.filter(
+    (pl.col("time_period") == 2023) & 
+    (pl.col("obs_value").is_not_null())
+).with_columns(
+    pl.col("obs_value")
+    .str.replace("<1", "0.5")
+    .str.replace(">95", "95")
+    .cast(pl.Float64)
+    .alias("testing_rate")
+)
+```
+
+# HIV Testing Rates For Pregnant Women (2023)
+
+```{python}
+
+import plotly.express as px
+
+custom_reds_scale = [
+    [0.0, "#fff0f3"],
+    [0.1, "#ffccd5"],
+    [0.3, "#ffb3c1"],
+    [0.5, "#ff8fa3"],
+    [0.7, "#ff4d6d"],
+    [0.9, "#c9184a"],
+    [1.0, "#590d22"]
+]
+
+
+fig = px.choropleth(
+    dff_2023.to_pandas(),
+    locations="alpha_3_code",
+    color="testing_rate",
+    hover_name="country",
+    hover_data={"testing_rate": ":.1f%", "alpha_3_code": False},
+    color_continuous_scale=custom_reds_scale,
+    range_color=(0, 100),
+    title="",
+    labels={"testing_rate": "Testing Rate (%)"},
+    projection="natural earth"
+)
+
+
+fig.update_layout(
+    geo=dict(
+        showframe=False,
+        showcoastlines=True,
+        landcolor="#fff0f3",
+        subunitcolor="#ffffff"
+    ),
+    coloraxis_colorbar=dict(
+        title=dict(text="% Tested", font=dict(color="#590d22")),
+        thickness=20,
+        len=0.75,
+        yanchor="middle",
+        y=0.5,
+        tickfont=dict(color="#590d22")
+    ),
+    font=dict(color="#590d22", family="Segoe UI, sans-serif"),
+    paper_bgcolor="#fff0f3",
+    margin=dict(l=0, r=0, t=50, b=0),
+    annotations=[
+        dict(
+            x=0,
+            y=-0.1,
+            xref="paper",
+            yref="paper",
+            text="Source: UNICEF Data (2023)",
+            showarrow=False,
+            font=dict(size=10, color="#590d22")
+        )
+    ]
+)
+fig.show()
+```
+
+::: {.callout-important collapse="true" appearance="simple" icon="false"}
+## Additional Information!!
+
+In 2023, smaller countries and African nations outpaced China and Russia in HIV testing rates due to several factors. Focused health programs in smaller nations, like Kyrgyzstan, were more manageable due to their smaller populations. African countries benefit from significant international aid supporting HIV testing and prevention. Additionally, nations with historically higher HIV prevalence prioritize testing in their healthcare systems. In contrast, China and Russia's vast populations and geographic spread present challenges to achieving similarly high testing rates.
+:::
+
+# HIV Testing Rates: 2015 vs 2023
+
+```{python}
+
+df_filtered = df_2023.filter(pl.col("time_period").is_in([2015, 2023]))
+
+
+df_2015 = df_filtered.filter(pl.col("time_period") == 2015).select([
+    "country", "alpha_3_code", 
+    pl.col("obs_value").alias("y2015")
+])
+
+df_2023_2 = df_filtered.filter(pl.col("time_period") == 2023).select([
+    "country", "alpha_3_code", 
+    pl.col("obs_value").alias("y2023")
+])
+
+
+df_combined = df_2015.join(
+    df_2023_2, 
+    on=["country", "alpha_3_code"], 
+    how="inner"
+)
+
+
+fig = px.scatter(
+    df_combined.to_pandas(),
+    x="y2015",
+    y="y2023",
+    hover_name="country",
+    title="",
+    labels={
+        "y2015": "2015 Testing Rate (%)", 
+        "y2023": "2023 Testing Rate (%)"
+    }
+)
+
+
+fig.add_shape(
+    type="line",
+    x0=0, y0=0, x1=100, y1=100,
+    line=dict(color="#590d22", width=2, dash="dash")
+)
+
+
+fig.update_traces(
+    marker=dict(
+        size=12,
+        color="#c9184a",  
+        opacity=0.75,
+        line=dict(width=1, color="#590d22")  
+    )
+)
+
+
+fig.update_layout(
+    xaxis=dict(
+        range=[0, 100],
+        title="2015 Testing Rate (%)",
+        title_font=dict(size=14),
+        tickfont=dict(size=12),
+        linecolor="#590d22"
+    ),
+    yaxis=dict(
+        range=[0, 100],
+        title="2023 Testing Rate (%)",
+        title_font=dict(size=14),
+        tickfont=dict(size=12),
+        linecolor="#590d22",
+        gridcolor="#ffccd5",
+        zerolinecolor="#590d22"
+    ),
+    font=dict(color="#590d22", family="Segoe UI, sans-serif"),
+    plot_bgcolor="#fff0f3",
+    paper_bgcolor="#fff0f3",
+    autosize=True,
+    margin=dict(l=40, r=40, t=60, b=40),
+    hoverlabel=dict(
+        bgcolor="#ffb3c1",
+        font=dict(color="#590d22")
+    )
+)
+
+fig.show()
+```
+
+::: {.callout-important collapse="true" appearance="simple" icon="false"}
+## Info:
+
+This chart compares HIV testing rates in 2015 and 2023. **Countries above the dashed black line improved**, while those **below saw a decline**. The **distance from the line** reflects the **magnitude of change**. Many countries show significant progress, with a few maintaining consistently high rates, and some experiencing setbacks.
+:::
+
+# Regional Trends in HIV Testing Rates For Pregnant Women (2015-2023)
+
+```{python}
+import pandas as pd
+
+
+df_pd = pd.read_csv("unicef_indicator.csv")
+
+
+df_pd = df_pd[df_pd["obs_value"].notna()]
+df_pd = df_pd[~df_pd["obs_value"].isin(["<1", ">95"])]
+df_pd["obs_value"] = df_pd["obs_value"].astype(float)
+
+region_mapping = {
+    # Africa
+    "Algeria": "Africa", "Angola": "Africa", "Benin": "Africa", "Botswana": "Africa", 
+    "Burkina Faso": "Africa", "Burundi": "Africa", "Cabo Verde": "Africa", "Cameroon": "Africa", 
+    "Central African Republic": "Africa", "Chad": "Africa", "Comoros": "Africa", "Congo": "Africa", 
+    "Côte d'Ivoire": "Africa", "Democratic Republic of the Congo": "Africa", "Djibouti": "Africa", 
+    "Egypt": "Africa", "Equatorial Guinea": "Africa", "Eritrea": "Africa", "Eswatini": "Africa", 
+    "Ethiopia": "Africa", "Gabon": "Africa", "Gambia": "Africa", "Ghana": "Africa", 
+    "Guinea": "Africa", "Guinea-Bissau": "Africa", "Kenya": "Africa", "Lesotho": "Africa", 
+    "Liberia": "Africa", "Libya": "Africa", "Madagascar": "Africa", "Malawi": "Africa", 
+    "Mali": "Africa", "Mauritania": "Africa", "Mauritius": "Africa", "Morocco": "Africa", 
+    "Mozambique": "Africa", "Namibia": "Africa", "Niger": "Africa", "Nigeria": "Africa", 
+    "Rwanda": "Africa", "Sao Tome and Principe": "Africa", "Senegal": "Africa", 
+    "Seychelles": "Africa", "Sierra Leone": "Africa", "Somalia": "Africa", "South Africa": "Africa", 
+    "South Sudan": "Africa", "Sudan": "Africa", "Tanzania": "Africa", "Togo": "Africa", 
+    "Tunisia": "Africa", "Uganda": "Africa", "Zambia": "Africa", "Zimbabwe": "Africa",
+
+    # Americas
+    "Argentina": "Americas", "Bahamas": "Americas", "Barbados": "Americas", "Belize": "Americas", 
+    "Bolivia": "Americas", "Brazil": "Americas", "Canada": "Americas", "Chile": "Americas", 
+    "Colombia": "Americas", "Costa Rica": "Americas", "Cuba": "Americas", 
+    "Dominican Republic": "Americas", "Ecuador": "Americas", "El Salvador": "Americas", 
+    "Guatemala": "Americas", "Guyana": "Americas", "Haiti": "Americas", 
+    "Honduras": "Americas", "Jamaica": "Americas", "Mexico": "Americas", 
+    "Nicaragua": "Americas", "Panama": "Americas", "Paraguay": "Americas", 
+    "Peru": "Americas", "Saint Lucia": "Americas", "Suriname": "Americas", 
+    "Trinidad and Tobago": "Americas", "United States": "Americas", 
+    "Uruguay": "Americas", "Venezuela": "Americas",
+
+    # Asia
+    "Afghanistan": "Asia", "Armenia": "Asia", "Azerbaijan": "Asia", "Bahrain": "Asia", 
+    "Bangladesh": "Asia", "Bhutan": "Asia", "Brunei": "Asia", "Cambodia": "Asia", 
+    "China": "Asia", "Georgia": "Asia", "India": "Asia", "Indonesia": "Asia", 
+    "Iran": "Asia", "Iraq": "Asia", "Israel": "Asia", "Japan": "Asia", "Jordan": "Asia", 
+    "Kazakhstan": "Asia", "Kuwait": "Asia", "Kyrgyzstan": "Asia", "Laos": "Asia", 
+    "Lebanon": "Asia", "Malaysia": "Asia", "Maldives": "Asia", "Mongolia": "Asia", 
+    "Myanmar": "Asia", "Nepal": "Asia", "Oman": "Asia", "Pakistan": "Asia", 
+    "Philippines": "Asia", "Qatar": "Asia", "Saudi Arabia": "Asia", "Singapore": "Asia", 
+    "Sri Lanka": "Asia", "Syria": "Asia", "Tajikistan": "Asia", "Thailand": "Asia", 
+    "Timor-Leste": "Asia", "Turkey": "Asia", "Turkmenistan": "Asia", 
+    "United Arab Emirates": "Asia", "Uzbekistan": "Asia", "Vietnam": "Asia", 
+    "Yemen": "Asia",
+
+    # Europe
+    "Albania": "Europe", "Austria": "Europe", "Belarus": "Europe", "Belgium": "Europe", 
+    "Bosnia and Herzegovina": "Europe", "Bulgaria": "Europe", "Croatia": "Europe", 
+    "Czech Republic": "Europe", "Denmark": "Europe", "Estonia": "Europe", "Finland": "Europe", 
+    "France": "Europe", "Germany": "Europe", "Greece": "Europe", "Hungary": "Europe", 
+    "Iceland": "Europe", "Ireland": "Europe", "Italy": "Europe", "Latvia": "Europe", 
+    "Lithuania": "Europe", "Luxembourg": "Europe", "Malta": "Europe", 
+    "Montenegro": "Europe", "Netherlands": "Europe", "North Macedonia": "Europe", 
+    "Norway": "Europe", "Poland": "Europe", "Portugal": "Europe", "Romania": "Europe", 
+    "Russia": "Europe", "Serbia": "Europe", "Slovakia": "Europe", "Slovenia": "Europe", 
+    "Spain": "Europe", "Sweden": "Europe", "Switzerland": "Europe", 
+    "Ukraine": "Europe", "United Kingdom": "Europe",
+
+    # Oceania
+    "Australia": "Oceania", "Fiji": "Oceania", "New Zealand": "Oceania", 
+    "Papua New Guinea": "Oceania", "Solomon Islands": "Oceania"
+}
+
+df_pd["region"] = df_pd["country"].map(region_mapping).fillna("Other")
+
+
+regional_avg = (
+    df_pd.groupby(["region", "time_period"])["obs_value"]
+    .mean()
+    .reset_index()
+    .rename(columns={"obs_value": "avg_testing_rate"})
+)
+
+
+custom_colors = [
+    "#590d22", "#800f2f", "#a4133c", "#c9184a", "#ff4d6d", 
+    "#ff758f", "#ff8fa3", "#ffb3c1", "#ffccd5", "#fff0f3"
+]
+
+
+fig = px.line(
+    regional_avg,
+    x="time_period",
+    y="avg_testing_rate",
+    color="region",
+    title="",
+    labels={
+        "time_period": "Year", 
+        "avg_testing_rate": "Average Testing Rate (%)",
+        "region": "Region"
+    },
+    color_discrete_sequence=custom_colors,
+    markers=True,
+    line_shape="spline",
+    template="plotly_white"
+)
+
+
+fig.update_layout(
+    hovermode="x unified",
+    legend_title_text="Region",
+    xaxis_title="Year",
+    yaxis_title="Average Testing Rate (%)",
+    yaxis_range=[0, 100],
+    autosize=True,
+    margin=dict(l=40, r=40, t=60, b=40),
+    font=dict(color="#590d22", family="Segoe UI, sans-serif"),
+    plot_bgcolor="#fff0f3",
+    paper_bgcolor="#fff0f3",
+    legend=dict(
+        bgcolor="#ffccd5",
+        bordercolor="#a4133c",
+        borderwidth=1,
+        font=dict(size=12)
+    ),
+    xaxis=dict(
+        linecolor="#590d22",
+        tickfont=dict(size=12),
+        title_font=dict(size=14)
+    ),
+    yaxis=dict(
+        linecolor="#590d22",
+        tickfont=dict(size=12),
+        title_font=dict(size=14),
+        gridcolor="#ffccd5",
+        zerolinecolor="#590d22"
+    )
+)
+
+
+fig.add_annotation(
+    x=0.5, y=1.1,
+    xref="paper", yref="paper",
+    text="",  
+    showarrow=False,
+    font=dict(size=16, color="#590d22")
+)
+
+fig.show()
+```
+
+# TOP 10 Improvement and Declines in HIV Testing Rates
+
+```{python}
+import polars as pl
+import plotly.express as px
+
+
+
+df1 = pl.read_csv("unicef_indicator.csv").with_columns(
+    pl.col("obs_value")
+    .str.replace("<1", "0.5")
+    .str.replace(">95", "95")
+    .cast(pl.Float64)
+)
+
+
+df_change = df1.filter(pl.col("time_period").is_in([2015, 2023])) \
+    .pivot(values="obs_value", index=["country", "alpha_3_code"], columns="time_period") \
+    .rename({"2015": "y2015", "2023": "y2023"}) \
+    .with_columns((pl.col("y2023") - pl.col("y2015")).alias("change")) \
+    .drop_nulls()
+
+
+top_improvements = df_change.sort("change", descending=True).head(10)
+top_declines = df_change.sort("change").head(10)
+
+combined = pl.concat([
+    top_improvements.with_columns(pl.lit("Improvement").alias("direction")),
+    top_declines.with_columns(pl.lit("Decline").alias("direction"))
+])
+
+
+fig = px.bar(
+    combined.to_pandas(),
+    x="country",
+    y="change",
+    color="direction",
+    text="change",
+    color_discrete_map={
+        "Improvement": "#a4133c",  
+        "Decline": "#ff758f"       
+    },
+    title="",
+    labels={"change": "Change in Testing Rate (%)", "country": "Country"},
+    category_orders={"direction": ["Improvement", "Decline"]}
+)
+
+
+fig.update_traces(
+    texttemplate='%{text:.1f}%', 
+    textposition='outside',
+    textfont=dict(color="#590d22", size=12),
+    marker=dict(
+        line=dict(width=1, color="#590d22")
+    ),
+    opacity=0.9
+)
+
+
+fig.update_layout(
+    plot_bgcolor="#fff0f3",
+    paper_bgcolor="#fff0f3",
+    font=dict(color="#590d22", family="Segoe UI, sans-serif"),
+    xaxis=dict(
+        title_font=dict(size=14),
+        tickfont=dict(size=12),
+        linecolor="#590d22"
+    ),
+    yaxis=dict(
+        title="Change in Testing Rate (%)",
+        title_font=dict(size=14),
+        tickfont=dict(size=12),
+        linecolor="#590d22",
+        gridcolor="#ffccd5", 
+        zerolinecolor="#590d22"
+    ),
+    legend=dict(
+        title_text="",
+        bgcolor="#ffccd5",
+        bordercolor="#a4133c",
+        borderwidth=1,
+        font=dict(size=12)
+    ),
+    margin=dict(l=50, r=50, t=30, b=70),
+    hoverlabel=dict(
+        bgcolor="#ffb3c1",
+        font=dict(color="#590d22")
+    ),
+    uniformtext_minsize=10, 
+    uniformtext_mode='hide',
+    bargap=0.4 
+)
+
+
+fig.add_shape(
+    type="line",
+    x0=-0.5, y0=0, x1=19.5, y1=0,
+    line=dict(color="#590d22", width=2, dash="dot")
+)
+
+fig.show()
+```
+
+::: {.callout-important collapse="true" appearance="simple" icon="false"}
+## Info:
+
+The bar chart highlights the countries that experienced the most significant changes in HIV testing rates between 2015 and 2023. Countries with the largest improvements are shown in dark red, while those with notable declines are displayed in light pink. The black dashed line at zero serves as a visual divider between positive and negative change. Overall, the chart reveals a global trend of improvement, with many countries showing remarkable progress in testing coverage. This aligns with the scatter plot insights, where most countries appear above the diagonal line, indicating a general upward movement in testing rates over time.
+:::
+
+# Global HIV Testing Rates Over Time
+
+```{python}
+summary = df_2023.group_by("time_period").agg([
+    pl.col("obs_value").mean().alias("Average Rate"),
+    pl.col("obs_value").median().alias("Median Rate"),
+    pl.col("obs_value").count().alias("Number of Countries")
+]).sort("time_period")
+
+
+summary = summary.with_columns(
+    pl.col("Average Rate").round(2),
+    pl.col("Median Rate").round(2)
+)
+
+
+summary_pd = summary.to_pandas()
+
+
+fig = px.line(summary_pd, 
+              x='time_period', 
+              y=['Average Rate', 'Median Rate'],
+              title='Global HIV Testing Rates Over Time',
+              labels={'value': 'Testing Rate (%)', 
+                     'variable': 'Metric',
+                     'time_period': 'Year'},
+              color_discrete_sequence=["#800f2f", "#ff4d6d"] 
+             )
+
+
+fig.update_layout(
+    xaxis=dict(
+        showgrid=False,
+        linecolor="#590d22",
+        tickfont=dict(color="#590d22"),
+        title_font=dict(color="#590d22")
+    ),
+    yaxis=dict(
+        showgrid=False, 
+        range=[0, 90],
+        linecolor="#590d22",
+        tickfont=dict(color="#590d22"),
+        title_font=dict(color="#590d22")
+    ),
+    plot_bgcolor="#fff0f3",
+    paper_bgcolor="#fff0f3",
+    font=dict(color="#590d22"),
+    legend=dict(
+        yanchor="top",
+        y=0.99,
+        xanchor="left",
+        x=0.01,
+        bgcolor="#ffccd5",
+        bordercolor="#a4133c",
+        borderwidth=1,
+        font=dict(color="#590d22")
+    ),
+    title=dict(font=dict(color="#800f2f")),
+    margin=dict(l=0, r=0, t=50, b=0),
+    hovermode="x unified",
+    dragmode=False,
+    hoverlabel=dict(
+        bgcolor="#ffb3c1",
+        font=dict(color="#590d22")
+    )
+)
+
+
+fig.update_traces(
+    line=dict(width=3),
+    marker=dict(
+        size=8, 
+        line=dict(width=1.5, color="#590d22")
+    ),
+    selector=dict(mode='lines+markers')
+)
+
+
+fig.data[0].update(
+    name="Average Rate",
+    line=dict(color="#800f2f", width=4), 
+    marker=dict(color="#800f2f", symbol="diamond")
+)
+
+fig.data[1].update(
+    name="Median Rate", 
+    line=dict(color="#ff4d6d", width=4, dash="dot"),  
+    marker=dict(color="#ff4d6d", symbol="circle")
+)
+
+fig.show()
+```
+
+::: {.callout-important collapse="true" appearance="simple" icon="false"}
+## Info:
+
+From 2015 to 2023, HIV testing rates have shown steady global improvement. In 2023, the **median rate** rose to **74.9%**, outpacing the **average of 61.95%**, suggesting that while many countries are advancing, some with lower rates are pulling the average down.
+
+With data from **127 countries** in 2023, the trend is clear: **global testing coverage is expanding, and disparities are becoming more visible.**
+:::
+
+# Conclusion
+
+The global fight against HIV/AIDS in pregnant women, highlighting early testing as crucial for preventing mother-to-child transmission and ensuring maternal and child health. While progress in testing rates is evident in some nations, significant disparities persist, underscoring the urgent need for targeted interventions in areas with low uptake. This data is a clear call to action for policymakers, healthcare systems, and communities to boost investment in healthcare infrastructure, education, and outreach initiatives. Despite the challenges, each increase in testing offers tangible hope for saved lives, stronger families, and healthier communities in our continued efforts against HIV/AIDS.
